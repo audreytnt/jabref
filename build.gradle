@@ -396,8 +396,6 @@ task jacocoMerge(type: JacocoMerge) {
 }
 
 jacocoTestReport {
-    executionData jacocoMerge.destinationFile
-    dependsOn jacocoMerge
 
     reports {
         xml.enabled = true // coveralls plugin depends on xml format report
