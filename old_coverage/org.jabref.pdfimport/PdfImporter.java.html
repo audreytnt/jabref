@@ -1,0 +1,257 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PdfImporter.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JabRef</a> &gt; <a href="index.source.html" class="el_package">org.jabref.pdfimport</a> &gt; <span class="el_source">PdfImporter.java</span></div><h1>PdfImporter.java</h1><pre class="source lang-java linenums">package org.jabref.pdfimport;
+
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Optional;
+
+import javax.swing.JOptionPane;
+import javax.swing.SwingUtilities;
+
+import org.jabref.Globals;
+import org.jabref.gui.BasePanel;
+import org.jabref.gui.EntryTypeView;
+import org.jabref.gui.JabRefFrame;
+import org.jabref.gui.externalfiles.DroppedFileHandler;
+import org.jabref.gui.externalfiletype.ExternalFileTypes;
+import org.jabref.gui.filelist.FileListEntry;
+import org.jabref.gui.filelist.FileListTableModel;
+import org.jabref.gui.maintable.MainTable;
+import org.jabref.logic.bibtexkeypattern.BibtexKeyGenerator;
+import org.jabref.logic.importer.ParserResult;
+import org.jabref.logic.importer.fileformat.PdfContentImporter;
+import org.jabref.logic.importer.fileformat.PdfXmpImporter;
+import org.jabref.logic.util.io.FileUtil;
+import org.jabref.logic.xmp.XmpUtilShared;
+import org.jabref.model.database.KeyCollisionException;
+import org.jabref.model.entry.BibEntry;
+import org.jabref.model.entry.EntryType;
+import org.jabref.model.entry.FieldName;
+import org.jabref.preferences.JabRefPreferences;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+public class PdfImporter {
+
+<span class="nc" id="L39">    private static final Logger LOGGER = LoggerFactory.getLogger(PdfImporter.class);</span>
+    private final JabRefFrame frame;
+    private final BasePanel panel;
+    private final MainTable entryTable;
+
+    private final int dropRow;
+
+    /**
+     * Creates the PdfImporter
+     *
+     * @param frame the JabRef frame
+     * @param panel the panel to use
+     * @param entryTable the entry table to work on
+     * @param dropRow the row the entry is dropped to. May be -1 to indicate that no row is selected.
+     */
+<span class="nc" id="L54">    public PdfImporter(JabRefFrame frame, BasePanel panel, MainTable entryTable, int dropRow) {</span>
+<span class="nc" id="L55">        this.frame = frame;</span>
+<span class="nc" id="L56">        this.panel = panel;</span>
+<span class="nc" id="L57">        this.entryTable = entryTable;</span>
+<span class="nc" id="L58">        this.dropRow = dropRow;</span>
+<span class="nc" id="L59">    }</span>
+
+    /**
+     *
+     * Imports the PDF files given by fileNames
+     *
+     * @param fileNames states the names of the files to import
+     * @return list of successful created BibTeX entries and list of non-PDF files
+     */
+    public ImportPdfFilesResult importPdfFiles(List&lt;String&gt; fileNames) {
+        // sort fileNames in PDFfiles to import and other files
+        // PDFfiles: variable files
+        // other files: variable noPdfFiles
+<span class="nc" id="L72">        List&lt;String&gt; files = new ArrayList&lt;&gt;(fileNames);</span>
+<span class="nc" id="L73">        List&lt;String&gt; noPdfFiles = new ArrayList&lt;&gt;();</span>
+<span class="nc bnc" id="L74" title="All 2 branches missed.">        for (String file : files) {</span>
+<span class="nc bnc" id="L75" title="All 2 branches missed.">            if (!PdfFileFilter.accept(file)) {</span>
+<span class="nc" id="L76">                noPdfFiles.add(file);</span>
+            }
+<span class="nc" id="L78">        }</span>
+<span class="nc" id="L79">        files.removeAll(noPdfFiles);</span>
+        // files and noPdfFiles correctly sorted
+
+        // import the files
+<span class="nc" id="L83">        List&lt;BibEntry&gt; entries = importPdfFilesInternal(files);</span>
+
+<span class="nc" id="L85">        return new ImportPdfFilesResult(noPdfFiles, entries);</span>
+    }
+
+    /**
+     * @param fileNames - PDF files to import
+     * @return true if the import succeeded, false otherwise
+     */
+    private List&lt;BibEntry&gt; importPdfFilesInternal(List&lt;String&gt; fileNames) {
+<span class="nc bnc" id="L93" title="All 2 branches missed.">        if (panel == null) {</span>
+<span class="nc" id="L94">            return Collections.emptyList();</span>
+        }
+<span class="nc" id="L96">        ImportDialog importDialog = null;</span>
+<span class="nc" id="L97">        boolean doNotShowAgain = false;</span>
+<span class="nc" id="L98">        boolean neverShow = Globals.prefs.getBoolean(JabRefPreferences.IMPORT_ALWAYSUSE);</span>
+<span class="nc" id="L99">        int globalChoice = Globals.prefs.getInt(JabRefPreferences.IMPORT_DEFAULT_PDF_IMPORT_STYLE);</span>
+
+<span class="nc" id="L101">        List&lt;BibEntry&gt; res = new ArrayList&lt;&gt;();</span>
+
+<span class="nc bnc" id="L103" title="All 2 branches missed.">        for (String fileName : fileNames) {</span>
+<span class="nc bnc" id="L104" title="All 4 branches missed.">            if (!neverShow &amp;&amp; !doNotShowAgain) {</span>
+<span class="nc bnc" id="L105" title="All 2 branches missed.">                importDialog = new ImportDialog(dropRow &gt;= 0, fileName);</span>
+<span class="nc bnc" id="L106" title="All 2 branches missed.">                if (!XmpUtilShared.hasMetadata(Paths.get(fileName), Globals.prefs.getXMPPreferences())) {</span>
+<span class="nc" id="L107">                    importDialog.disableXMPChoice();</span>
+                }
+<span class="nc" id="L109">                importDialog.showDialog();</span>
+<span class="nc" id="L110">                doNotShowAgain = importDialog.isDoNotShowAgain();</span>
+            }
+<span class="nc bnc" id="L112" title="All 4 branches missed.">            if (neverShow || (importDialog.getResult() == JOptionPane.OK_OPTION)) {</span>
+<span class="nc bnc" id="L113" title="All 2 branches missed.">                int choice = neverShow ? globalChoice : importDialog.getChoice();</span>
+<span class="nc bnc" id="L114" title="All 5 branches missed.">                switch (choice) {</span>
+                    case ImportDialog.XMP:
+<span class="nc" id="L116">                        doXMPImport(fileName, res);</span>
+<span class="nc" id="L117">                        break;</span>
+
+                    case ImportDialog.CONTENT:
+<span class="nc" id="L120">                        doContentImport(fileName, res);</span>
+<span class="nc" id="L121">                        break;</span>
+                    case ImportDialog.NOMETA:
+<span class="nc" id="L123">                        createNewBlankEntry(fileName).ifPresent(res::add);</span>
+<span class="nc" id="L124">                        break;</span>
+                    case ImportDialog.ONLYATTACH:
+<span class="nc" id="L126">                        DroppedFileHandler dfh = new DroppedFileHandler(frame, panel);</span>
+<span class="nc bnc" id="L127" title="All 2 branches missed.">                        if (dropRow &gt;= 0) {</span>
+<span class="nc" id="L128">                            dfh.linkPdfToEntry(fileName, entryTable, dropRow);</span>
+                        } else {
+<span class="nc" id="L130">                            entryTable.getSelectedEntries().forEach(entry -&gt; dfh.linkPdfToEntry(fileName, entry));</span>
+                        }
+<span class="nc" id="L132">                        break;</span>
+                    default:
+                        break;
+                }
+            }
+
+<span class="nc" id="L138">        }</span>
+<span class="nc" id="L139">        return res;</span>
+    }
+
+    private void doXMPImport(String fileName, List&lt;BibEntry&gt; res) {
+<span class="nc" id="L143">        List&lt;BibEntry&gt; localRes = new ArrayList&lt;&gt;();</span>
+<span class="nc" id="L144">        PdfXmpImporter importer = new PdfXmpImporter(Globals.prefs.getXMPPreferences());</span>
+<span class="nc" id="L145">        Path filePath = Paths.get(fileName);</span>
+<span class="nc" id="L146">        ParserResult result = importer.importDatabase(filePath, Globals.prefs.getDefaultEncoding());</span>
+<span class="nc bnc" id="L147" title="All 2 branches missed.">        if (result.hasWarnings()) {</span>
+<span class="nc" id="L148">            frame.showMessage(result.getErrorMessage());</span>
+        }
+<span class="nc" id="L150">        localRes.addAll(result.getDatabase().getEntries());</span>
+
+<span class="nc bnc" id="L152" title="All 2 branches missed.">        if (localRes.isEmpty()) {</span>
+            // import failed -&gt; generate default entry
+<span class="nc" id="L154">            LOGGER.info(&quot;Import failed&quot;);</span>
+<span class="nc" id="L155">            createNewBlankEntry(fileName).ifPresent(res::add);</span>
+<span class="nc" id="L156">            return;</span>
+        }
+
+<span class="nc bnc" id="L159" title="All 2 branches missed.">        for (BibEntry entry : localRes) {</span>
+            // insert entry to database and link file
+<span class="nc" id="L161">            panel.getDatabase().insertEntry(entry);</span>
+<span class="nc" id="L162">            panel.markBaseChanged();</span>
+<span class="nc" id="L163">            FileListTableModel tm = new FileListTableModel();</span>
+<span class="nc" id="L164">            Path toLink = Paths.get(fileName);</span>
+            // Get a list of file directories:
+<span class="nc" id="L166">            List&lt;Path&gt; dirsS = panel.getBibDatabaseContext()</span>
+<span class="nc" id="L167">                                    .getFileDirectoriesAsPaths(Globals.prefs.getFilePreferences());</span>
+
+<span class="nc" id="L169">            tm.addEntry(0, new FileListEntry(&quot;&quot;, FileUtil.relativize(toLink, dirsS).toString(),</span>
+<span class="nc" id="L170">                    ExternalFileTypes.getInstance().getExternalFileTypeByName(&quot;PDF&quot;)));</span>
+<span class="nc" id="L171">            entry.setField(FieldName.FILE, tm.getStringRepresentation());</span>
+<span class="nc" id="L172">            res.add(entry);</span>
+<span class="nc" id="L173">        }</span>
+<span class="nc" id="L174">    }</span>
+
+    private Optional&lt;BibEntry&gt; createNewBlankEntry(String fileName) {
+<span class="nc" id="L177">        Optional&lt;BibEntry&gt; newEntry = createNewEntry();</span>
+<span class="nc" id="L178">        newEntry.ifPresent(bibEntry -&gt; {</span>
+<span class="nc" id="L179">            DroppedFileHandler dfh = new DroppedFileHandler(frame, panel);</span>
+<span class="nc" id="L180">            dfh.linkPdfToEntry(fileName, bibEntry);</span>
+<span class="nc" id="L181">        });</span>
+<span class="nc" id="L182">        return newEntry;</span>
+    }
+
+    private void doContentImport(String fileName, List&lt;BibEntry&gt; res) {
+
+<span class="nc" id="L187">        PdfContentImporter contentImporter = new PdfContentImporter(</span>
+<span class="nc" id="L188">                                                                    Globals.prefs.getImportFormatPreferences());</span>
+<span class="nc" id="L189">        Path filePath = Paths.get(fileName);</span>
+<span class="nc" id="L190">        ParserResult result = contentImporter.importDatabase(filePath, Globals.prefs.getDefaultEncoding());</span>
+<span class="nc bnc" id="L191" title="All 2 branches missed.">        if (result.hasWarnings()) {</span>
+<span class="nc" id="L192">            frame.showMessage(result.getErrorMessage());</span>
+        }
+
+<span class="nc bnc" id="L195" title="All 2 branches missed.">        if (!result.getDatabase().hasEntries()) {</span>
+            // import failed -&gt; generate default entry
+<span class="nc" id="L197">            createNewBlankEntry(fileName).ifPresent(res::add);</span>
+<span class="nc" id="L198">            return;</span>
+        }
+
+        // only one entry is imported
+<span class="nc" id="L202">        BibEntry entry = result.getDatabase().getEntries().get(0);</span>
+
+        // insert entry to database and link file
+<span class="nc" id="L205">        panel.getDatabase().insertEntry(entry);</span>
+<span class="nc" id="L206">        panel.markBaseChanged();</span>
+<span class="nc" id="L207">        new BibtexKeyGenerator(panel.getBibDatabaseContext(), Globals.prefs.getBibtexKeyPatternPreferences())</span>
+<span class="nc" id="L208">                                                                                                             .generateAndSetKey(entry);</span>
+<span class="nc" id="L209">        DroppedFileHandler dfh = new DroppedFileHandler(frame, panel);</span>
+<span class="nc" id="L210">        dfh.linkPdfToEntry(fileName, entry);</span>
+
+<span class="nc" id="L212">        SwingUtilities.invokeLater(() -&gt; panel.clearAndSelect(entry));</span>
+
+<span class="nc bnc" id="L214" title="All 2 branches missed.">        if (Globals.prefs.getBoolean(JabRefPreferences.AUTO_OPEN_FORM)) {</span>
+<span class="nc" id="L215">            panel.showAndEdit(entry);</span>
+        }
+<span class="nc" id="L217">        res.add(entry);</span>
+<span class="nc" id="L218">    }</span>
+
+    private Optional&lt;BibEntry&gt; createNewEntry() {
+        // Find out what type is desired
+<span class="nc" id="L222">        EntryTypeView entryTypeDialog = new EntryTypeView(frame.getCurrentBasePanel(), frame.getDialogService(), Globals.prefs);</span>
+<span class="nc" id="L223">        EntryType type = entryTypeDialog.showAndWait().orElse(null);</span>
+
+<span class="nc bnc" id="L225" title="All 2 branches missed.">        if (type != null) { // Only if the dialog was not canceled.</span>
+<span class="nc" id="L226">            final BibEntry bibEntry = new BibEntry(type);</span>
+            try {
+<span class="nc" id="L228">                panel.insertEntry(bibEntry);</span>
+
+<span class="nc" id="L230">                return Optional.of(bibEntry);</span>
+<span class="nc" id="L231">            } catch (KeyCollisionException ex) {</span>
+<span class="nc" id="L232">                LOGGER.info(&quot;Key collision occurred&quot;, ex);</span>
+            }
+        }
+<span class="nc" id="L235">        return Optional.empty();</span>
+    }
+
+    public class ImportPdfFilesResult {
+
+        private final List&lt;String&gt; noPdfFiles;
+        private final List&lt;BibEntry&gt; entries;
+
+<span class="nc" id="L243">        public ImportPdfFilesResult(List&lt;String&gt; noPdfFiles, List&lt;BibEntry&gt; entries) {</span>
+<span class="nc" id="L244">            this.noPdfFiles = noPdfFiles;</span>
+<span class="nc" id="L245">            this.entries = entries;</span>
+<span class="nc" id="L246">        }</span>
+
+        public List&lt;String&gt; getNoPdfFiles() {
+<span class="nc" id="L249">            return noPdfFiles;</span>
+        }
+
+        public List&lt;BibEntry&gt; getEntries() {
+<span class="nc" id="L253">            return entries;</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.1.201803210924</span></div></body></html>

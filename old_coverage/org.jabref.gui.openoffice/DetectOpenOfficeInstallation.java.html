@@ -1,0 +1,163 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DetectOpenOfficeInstallation.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JabRef</a> &gt; <a href="index.source.html" class="el_package">org.jabref.gui.openoffice</a> &gt; <span class="el_source">DetectOpenOfficeInstallation.java</span></div><h1>DetectOpenOfficeInstallation.java</h1><pre class="source lang-java linenums">package org.jabref.gui.openoffice;
+
+import java.awt.BorderLayout;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.List;
+import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Future;
+
+import javax.swing.BorderFactory;
+import javax.swing.JDialog;
+import javax.swing.JLabel;
+import javax.swing.JProgressBar;
+import javax.swing.SwingConstants;
+import javax.swing.SwingUtilities;
+
+import org.jabref.Globals;
+import org.jabref.gui.DialogService;
+import org.jabref.gui.desktop.JabRefDesktop;
+import org.jabref.gui.desktop.os.NativeDesktop;
+import org.jabref.gui.util.BackgroundTask;
+import org.jabref.gui.util.DefaultTaskExecutor;
+import org.jabref.gui.util.DirectoryDialogConfiguration;
+import org.jabref.logic.l10n.Localization;
+import org.jabref.logic.openoffice.OpenOfficeFileSearch;
+import org.jabref.logic.openoffice.OpenOfficePreferences;
+import org.jabref.logic.util.OS;
+import org.jabref.logic.util.io.FileUtil;
+
+/**
+ * Tools for automatically detecting OpenOffice or LibreOffice installations.
+ */
+public class DetectOpenOfficeInstallation {
+
+    private final OpenOfficePreferences preferences;
+    private final JDialog parent;
+    private final DialogService dialogService;
+
+    private JDialog progressDialog;
+
+<span class="nc" id="L43">    public DetectOpenOfficeInstallation(JDialog parent, OpenOfficePreferences preferences, DialogService dialogService) {</span>
+<span class="nc" id="L44">        this.parent = parent;</span>
+<span class="nc" id="L45">        this.preferences = preferences;</span>
+<span class="nc" id="L46">        this.dialogService = dialogService;</span>
+<span class="nc" id="L47">    }</span>
+
+    public Future&lt;Boolean&gt; isInstalled() {
+<span class="nc" id="L50">        CompletableFuture&lt;Boolean&gt; future = new CompletableFuture&lt;&gt;();</span>
+<span class="nc bnc" id="L51" title="All 2 branches missed.">        if (this.checkAutoDetectedPaths(preferences)) {</span>
+<span class="nc" id="L52">            future.complete(true);</span>
+        } else {
+<span class="nc" id="L54">            init();</span>
+<span class="nc" id="L55">            BackgroundTask.wrap(() -&gt; future.complete(autoDetectPaths()))</span>
+<span class="nc" id="L56">                          .onSuccess(x -&gt; SwingUtilities.invokeLater(progressDialog::dispose))</span>
+<span class="nc" id="L57">                          .executeWith(Globals.TASK_EXECUTOR);</span>
+        }
+<span class="nc" id="L59">        return future;</span>
+    }
+
+    public void init() {
+<span class="nc" id="L63">        progressDialog = showProgressDialog(parent, Localization.lang(&quot;Autodetecting paths...&quot;),</span>
+<span class="nc" id="L64">                Localization.lang(&quot;Please wait...&quot;));</span>
+<span class="nc" id="L65">    }</span>
+
+    private Optional&lt;Path&gt; selectInstallationPath() {
+
+<span class="nc" id="L69">        final NativeDesktop nativeDesktop = JabRefDesktop.getNativeDesktop();</span>
+
+<span class="nc" id="L71">        Optional&lt;Path&gt; path = DefaultTaskExecutor.runInJavaFXThread(() -&gt; {</span>
+<span class="nc" id="L72">            dialogService.showInformationDialogAndWait(Localization.lang(&quot;Could not find OpenOffice/LibreOffice installation&quot;),</span>
+<span class="nc" id="L73">                    Localization.lang(&quot;Unable to autodetect OpenOffice/LibreOffice installation. Please choose the installation directory manually.&quot;));</span>
+<span class="nc" id="L74">            DirectoryDialogConfiguration dirDialogConfiguration = new DirectoryDialogConfiguration.Builder()</span>
+<span class="nc" id="L75">                    .withInitialDirectory(nativeDesktop.getApplicationDirectory())</span>
+<span class="nc" id="L76">                    .build();</span>
+<span class="nc" id="L77">            return dialogService.showDirectorySelectionDialog(dirDialogConfiguration);</span>
+        });
+
+<span class="nc" id="L80">        return path;</span>
+    }
+
+    private boolean autoDetectPaths() {
+<span class="nc" id="L84">        List&lt;Path&gt; installations = OpenOfficeFileSearch.detectInstallations();</span>
+
+        // manually add installation path
+<span class="nc bnc" id="L87" title="All 2 branches missed.">        if (installations.isEmpty()) {</span>
+<span class="nc" id="L88">            selectInstallationPath().ifPresent(installations::add);</span>
+        }
+
+        // select among multiple installations
+<span class="nc" id="L92">        Optional&lt;Path&gt; actualFile = chooseAmongInstallations(installations);</span>
+<span class="nc bnc" id="L93" title="All 2 branches missed.">        if (actualFile.isPresent()) {</span>
+<span class="nc" id="L94">            return setOpenOfficePreferences(actualFile.get());</span>
+        }
+
+<span class="nc" id="L97">        return false;</span>
+    }
+
+    /**
+     * Checks whether the executablePath exists
+     */
+    private boolean checkAutoDetectedPaths(OpenOfficePreferences openOfficePreferences) {
+<span class="nc" id="L104">        String executablePath = openOfficePreferences.getExecutablePath();</span>
+<span class="nc bnc" id="L105" title="All 4 branches missed.">        return ((executablePath != null) &amp;&amp; Files.exists(Paths.get(executablePath)));</span>
+    }
+
+    private boolean setOpenOfficePreferences(Path installDir) {
+<span class="nc" id="L109">        Optional&lt;Path&gt; execPath = Optional.empty();</span>
+
+<span class="nc bnc" id="L111" title="All 2 branches missed.">        if (OS.WINDOWS) {</span>
+<span class="nc" id="L112">            execPath = FileUtil.find(OpenOfficePreferences.WINDOWS_EXECUTABLE, installDir);</span>
+<span class="nc bnc" id="L113" title="All 2 branches missed.">        } else if (OS.OS_X) {</span>
+<span class="nc" id="L114">            execPath = FileUtil.find(OpenOfficePreferences.OSX_EXECUTABLE, installDir);</span>
+<span class="nc bnc" id="L115" title="All 2 branches missed.">        } else if (OS.LINUX) {</span>
+<span class="nc" id="L116">            execPath = FileUtil.find(OpenOfficePreferences.LINUX_EXECUTABLE, installDir);</span>
+        }
+
+<span class="nc" id="L119">        Optional&lt;Path&gt; jarFilePath = FileUtil.find(OpenOfficePreferences.OO_JARS.get(0), installDir);</span>
+
+<span class="nc bnc" id="L121" title="All 4 branches missed.">        if (execPath.isPresent() &amp;&amp; jarFilePath.isPresent()) {</span>
+<span class="nc" id="L122">            preferences.setInstallationPath(installDir.toString());</span>
+<span class="nc" id="L123">            preferences.setExecutablePath(execPath.get().toString());</span>
+<span class="nc" id="L124">            preferences.setJarsPath(jarFilePath.get().getParent().toString());</span>
+<span class="nc" id="L125">            return true;</span>
+        }
+
+<span class="nc" id="L128">        return false;</span>
+    }
+
+    private Optional&lt;Path&gt; chooseAmongInstallations(List&lt;Path&gt; installDirs) {
+<span class="nc bnc" id="L132" title="All 2 branches missed.">        if (installDirs.isEmpty()) {</span>
+<span class="nc" id="L133">            return Optional.empty();</span>
+        }
+
+<span class="nc bnc" id="L136" title="All 2 branches missed.">        if (installDirs.size() == 1) {</span>
+<span class="nc" id="L137">            return Optional.of(installDirs.get(0).toAbsolutePath());</span>
+        }
+
+<span class="nc" id="L140">        String content = Localization.lang(&quot;Found more than one OpenOffice/LibreOffice executable.&quot;)</span>
+<span class="nc" id="L141">                + &quot;\n&quot; + Localization.lang(&quot;Please choose which one to connect to:&quot;);</span>
+
+<span class="nc" id="L143">        Optional&lt;Path&gt; selectedPath = DefaultTaskExecutor.runInJavaFXThread(() -&gt; dialogService.showChoiceDialogAndWait(</span>
+<span class="nc" id="L144">                Localization.lang(&quot;Choose OpenOffice/LibreOffice executable&quot;),</span>
+<span class="nc" id="L145">                content, Localization.lang(&quot;Use selected instance&quot;), installDirs));</span>
+
+<span class="nc" id="L147">        return selectedPath;</span>
+    }
+
+    public JDialog showProgressDialog(JDialog progressParent, String title, String message) {
+<span class="nc" id="L151">        JProgressBar bar = new JProgressBar(SwingConstants.HORIZONTAL);</span>
+<span class="nc" id="L152">        final JDialog progressDialog = new JDialog(progressParent, title, false);</span>
+<span class="nc" id="L153">        bar.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));</span>
+<span class="nc" id="L154">        bar.setIndeterminate(true);</span>
+<span class="nc" id="L155">        progressDialog.add(new JLabel(message), BorderLayout.NORTH);</span>
+<span class="nc" id="L156">        progressDialog.add(bar, BorderLayout.CENTER);</span>
+<span class="nc" id="L157">        progressDialog.pack();</span>
+<span class="nc" id="L158">        progressDialog.setLocationRelativeTo(null);</span>
+<span class="nc" id="L159">        progressDialog.setVisible(true);</span>
+<span class="nc" id="L160">        return progressDialog;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.1.201803210924</span></div></body></html>

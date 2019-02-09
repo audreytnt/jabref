@@ -1,0 +1,203 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>EntryFromFileCreatorManager.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JabRef</a> &gt; <a href="index.source.html" class="el_package">org.jabref.gui.importer</a> &gt; <span class="el_source">EntryFromFileCreatorManager.java</span></div><h1>EntryFromFileCreatorManager.java</h1><pre class="source lang-java linenums">package org.jabref.gui.importer;
+
+import java.io.File;
+import java.io.FileFilter;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
+import java.util.Optional;
+
+import javax.swing.undo.CompoundEdit;
+
+import org.jabref.gui.BasePanel;
+import org.jabref.gui.externalfiletype.ExternalFileType;
+import org.jabref.gui.externalfiletype.ExternalFileTypes;
+import org.jabref.gui.undo.UndoableInsertEntry;
+import org.jabref.logic.l10n.Localization;
+import org.jabref.model.database.BibDatabase;
+import org.jabref.model.entry.BibEntry;
+import org.jabref.model.entry.EntryType;
+import org.jabref.model.entry.IdGenerator;
+
+/**
+ * The class EntryFromFileCreatorManager manages entry creators.
+ * The manager knows all existing implementations of the interface EntryFromFileCreator.
+ * Given a file, the manager can then provide a creator, which is able to create a Bibtex entry for his file.
+ * Knowing all implementations of the interface, the manager also knows the set of all files, of which Bibtex entries can be created.
+ * The GUI uses this capability for offering the user only such files, of which entries could actually be created.
+ *
+ */
+public final class EntryFromFileCreatorManager {
+
+    private final List&lt;EntryFromFileCreator&gt; entryCreators;
+
+
+<span class="nc" id="L37">    public EntryFromFileCreatorManager(ExternalFileTypes externalFilesTypes) {</span>
+
+<span class="nc" id="L39">        entryCreators = new ArrayList&lt;&gt;(10);</span>
+<span class="nc" id="L40">        entryCreators.add(new EntryFromPDFCreator(externalFilesTypes));</span>
+
+        // add a creator for each ExternalFileType if there is no specialized
+        // creator existing.
+<span class="nc" id="L44">        Collection&lt;ExternalFileType&gt; fileTypes = externalFilesTypes.getExternalFileTypeSelection();</span>
+
+<span class="nc bnc" id="L46" title="All 2 branches missed.">        for (ExternalFileType exFileType : fileTypes) {</span>
+<span class="nc bnc" id="L47" title="All 2 branches missed.">            if (!hasSpecialisedCreatorForExternalFileType(exFileType)) {</span>
+<span class="nc" id="L48">                entryCreators.add(new EntryFromExternalFileCreator(exFileType));</span>
+            }
+<span class="nc" id="L50">        }</span>
+<span class="nc" id="L51">    }</span>
+
+    private boolean hasSpecialisedCreatorForExternalFileType(
+            ExternalFileType externalFileType) {
+<span class="nc bnc" id="L55" title="All 2 branches missed.">        for (EntryFromFileCreator entryCreator : entryCreators) {</span>
+<span class="nc bnc" id="L56" title="All 2 branches missed.">            if ((entryCreator.getExternalFileType() == null)</span>
+<span class="nc bnc" id="L57" title="All 2 branches missed.">                    || (entryCreator.getExternalFileType().getExtension().isEmpty())) {</span>
+<span class="nc" id="L58">                continue;</span>
+            }
+<span class="nc bnc" id="L60" title="All 2 branches missed.">            if (entryCreator.getExternalFileType().getExtension().equals(</span>
+<span class="nc" id="L61">                    externalFileType.getExtension())) {</span>
+<span class="nc" id="L62">                return true;</span>
+            }
+<span class="nc" id="L64">        }</span>
+<span class="nc" id="L65">        return false;</span>
+    }
+
+    /**
+     * Returns a {@link EntryFromFileCreator} object that is capable of creating a entry for the given file.
+     *
+     * @param file the external file
+     * @return an empty optional if there is no EntryFromFileCreator for this file.
+     */
+    public Optional&lt;EntryFromFileCreator&gt; getEntryCreator(Path file) {
+<span class="nc bnc" id="L75" title="All 2 branches missed.">        if (!Files.exists(file)) {</span>
+<span class="nc" id="L76">            return Optional.empty();</span>
+        }
+<span class="nc bnc" id="L78" title="All 2 branches missed.">        for (EntryFromFileCreator creator : entryCreators) {</span>
+<span class="nc bnc" id="L79" title="All 2 branches missed.">            if (creator.accept(file.toFile())) {</span>
+<span class="nc" id="L80">                return Optional.of(creator);</span>
+            }
+<span class="nc" id="L82">        }</span>
+<span class="nc" id="L83">        return Optional.empty();</span>
+    }
+
+    /**
+     * Tries to add a entry for each file in the List.
+     *
+     * @param files
+     * @param database
+     * @param entryType
+     * @return List of unexpected import event messages including failures.
+     */
+    public List&lt;String&gt; addEntrysFromFiles(List&lt;Path&gt; files,
+                                           BibDatabase database, EntryType entryType,
+                                           boolean generateKeywordsFromPathToFile) {
+<span class="nc" id="L97">        return addEntriesFromFiles(files, database, null, entryType, generateKeywordsFromPathToFile);</span>
+    }
+
+    /**
+     * Tries to add a entry for each file in the List.
+     *
+     * @return Returns a list of unexpected failures while importing
+     */
+    public List&lt;String&gt; addEntriesFromFiles(List&lt;Path&gt; files,
+                                            BibDatabase database, BasePanel panel, EntryType entryType,
+                                            boolean generateKeywordsFromPathToFile) {
+
+<span class="nc" id="L109">        List&lt;String&gt; importGUIMessages = new ArrayList&lt;&gt;();</span>
+<span class="nc" id="L110">        int count = 0;</span>
+<span class="nc" id="L111">        CompoundEdit ce = new CompoundEdit();</span>
+<span class="nc bnc" id="L112" title="All 2 branches missed.">        for (Path f : files) {</span>
+<span class="nc" id="L113">            Optional&lt;EntryFromFileCreator&gt; creator = getEntryCreator(f);</span>
+<span class="nc bnc" id="L114" title="All 2 branches missed.">            if (!creator.isPresent()) {</span>
+<span class="nc" id="L115">                importGUIMessages.add(&quot;Problem importing &quot; + f.toAbsolutePath() + &quot;: Unknown filetype.&quot;);</span>
+            } else {
+<span class="nc" id="L117">                Optional&lt;BibEntry&gt; entry = creator.get().createEntry(f.toFile(), generateKeywordsFromPathToFile);</span>
+<span class="nc bnc" id="L118" title="All 2 branches missed.">                if (!entry.isPresent()) {</span>
+<span class="nc" id="L119">                    importGUIMessages.add(&quot;Problem importing &quot; + f.toAbsolutePath() + &quot;: Entry could not be created.&quot;);</span>
+<span class="nc" id="L120">                    continue;</span>
+                }
+<span class="nc bnc" id="L122" title="All 2 branches missed.">                if (entryType != null) {</span>
+<span class="nc" id="L123">                    entry.get().setType(entryType);</span>
+                }
+<span class="nc bnc" id="L125" title="All 2 branches missed.">                if (entry.get().getId() == null) {</span>
+<span class="nc" id="L126">                    entry.get().setId(IdGenerator.next());</span>
+                }
+                /*
+                 * TODO: database.insertEntry(BibEntry) is not sensible. Why
+                 * does 'true' mean &quot;There were duplicates&quot;, while 'false' means
+                 * &quot;Everything alright&quot;?
+                 */
+<span class="nc bnc" id="L133" title="All 2 branches missed.">                if (!database.containsEntryWithId(entry.get().getId())) {</span>
+                    // Work around SIDE EFFECT of creator.createEntry. The EntryFromPDFCreator also creates the entry in the table
+                    // Therefore, we only insert the entry if it is not already present
+<span class="nc bnc" id="L136" title="All 2 branches missed.">                    if (database.insertEntry(entry.get())) {</span>
+<span class="nc" id="L137">                        importGUIMessages.add(&quot;Problem importing &quot; + f.toAbsolutePath() + &quot;: Insert into BibDatabase failed.&quot;);</span>
+                    } else {
+<span class="nc" id="L139">                        count++;</span>
+<span class="nc bnc" id="L140" title="All 2 branches missed.">                        if (panel != null) {</span>
+<span class="nc" id="L141">                            ce.addEdit(new UndoableInsertEntry(database, entry.get()));</span>
+                        }
+                    }
+                }
+            }
+<span class="nc" id="L146">        }</span>
+
+<span class="nc bnc" id="L148" title="All 4 branches missed.">        if ((count &gt; 0) &amp;&amp; (panel != null)) {</span>
+<span class="nc" id="L149">            ce.end();</span>
+<span class="nc" id="L150">            panel.getUndoManager().addEdit(ce);</span>
+        }
+<span class="nc" id="L152">        return importGUIMessages;</span>
+
+    }
+
+    /**
+     * Returns a {@link FileFilter} instance which will accept all files, for
+     * which a {@link EntryFromFileCreator} exists, that accepts the files. &lt;br&gt;
+     * &lt;br&gt;
+     * This {@link FileFilter} will be displayed in the GUI as
+     * &quot;All supported files&quot;.
+     *
+     * @return A {@link FileFilter} that accepts all files for which creators
+     *         exist.
+     */
+    private FileFilter getFileFilter() {
+<span class="nc" id="L167">        return new FileFilter() {</span>
+
+            /**
+             * Accepts all files, which are accepted by any known creator.
+             */
+            @Override
+            public boolean accept(File file) {
+<span class="nc bnc" id="L174" title="All 2 branches missed.">                for (EntryFromFileCreator creator : entryCreators) {</span>
+<span class="nc bnc" id="L175" title="All 2 branches missed.">                    if (creator.accept(file)) {</span>
+<span class="nc" id="L176">                        return true;</span>
+                    }
+<span class="nc" id="L178">                }</span>
+<span class="nc" id="L179">                return false;</span>
+            }
+
+            @Override
+            public String toString() {
+<span class="nc" id="L184">                return Localization.lang(&quot;All external files&quot;);</span>
+            }
+        };
+    }
+
+    /**
+     * Returns a list of all {@link FileFilter} instances (i.e.
+     * {@link EntryFromFileCreator}, plus the file filter that comes with the
+     * {@link #getFileFilter()} method.
+     *
+     * @return A List of all known possible file filters.
+     */
+    public List&lt;FileFilter&gt; getFileFilterList() {
+<span class="nc" id="L197">        List&lt;FileFilter&gt; filters = new ArrayList&lt;&gt;();</span>
+<span class="nc" id="L198">        filters.add(getFileFilter());</span>
+<span class="nc" id="L199">        filters.addAll(entryCreators);</span>
+<span class="nc" id="L200">        return filters;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.1.201803210924</span></div></body></html>

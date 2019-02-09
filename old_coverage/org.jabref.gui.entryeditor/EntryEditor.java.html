@@ -1,0 +1,425 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>EntryEditor.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JabRef</a> &gt; <a href="index.source.html" class="el_package">org.jabref.gui.entryeditor</a> &gt; <span class="el_source">EntryEditor.java</span></div><h1>EntryEditor.java</h1><pre class="source lang-java linenums">package org.jabref.gui.entryeditor;
+
+import java.io.File;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.stream.Collectors;
+
+import javafx.fxml.FXML;
+import javafx.geometry.Side;
+import javafx.scene.control.Button;
+import javafx.scene.control.ContextMenu;
+import javafx.scene.control.Label;
+import javafx.scene.control.MenuItem;
+import javafx.scene.control.Tab;
+import javafx.scene.control.TabPane;
+import javafx.scene.input.DataFormat;
+import javafx.scene.input.KeyEvent;
+import javafx.scene.input.TransferMode;
+import javafx.scene.layout.BorderPane;
+
+import org.jabref.Globals;
+import org.jabref.gui.BasePanel;
+import org.jabref.gui.DialogService;
+import org.jabref.gui.GUIGlobals;
+import org.jabref.gui.actions.ActionFactory;
+import org.jabref.gui.actions.GenerateBibtexKeySingleAction;
+import org.jabref.gui.actions.StandardActions;
+import org.jabref.gui.entryeditor.fileannotationtab.FileAnnotationTab;
+import org.jabref.gui.externalfiles.NewDroppedFileHandler;
+import org.jabref.gui.externalfiletype.ExternalFileTypes;
+import org.jabref.gui.help.HelpAction;
+import org.jabref.gui.keyboard.KeyBinding;
+import org.jabref.gui.menus.ChangeEntryTypeMenu;
+import org.jabref.gui.mergeentries.FetchAndMergeEntry;
+import org.jabref.gui.undo.CountingUndoManager;
+import org.jabref.gui.util.ColorUtil;
+import org.jabref.gui.util.DefaultTaskExecutor;
+import org.jabref.gui.util.TaskExecutor;
+import org.jabref.logic.TypedBibEntry;
+import org.jabref.logic.help.HelpFile;
+import org.jabref.logic.importer.EntryBasedFetcher;
+import org.jabref.logic.importer.WebFetchers;
+import org.jabref.logic.search.SearchQueryHighlightListener;
+import org.jabref.model.database.BibDatabaseContext;
+import org.jabref.model.entry.BibEntry;
+import org.jabref.model.util.FileUpdateMonitor;
+
+import com.airhacks.afterburner.views.ViewLoader;
+import org.fxmisc.easybind.EasyBind;
+import org.fxmisc.easybind.Subscription;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+/**
+ * GUI component that allows editing of the fields of a BibEntry (i.e. the
+ * one that shows up, when you double click on an entry in the table)
+ * &lt;p&gt;
+ * It hosts the tabs (required, general, optional) and the buttons to the left.
+ * &lt;p&gt;
+ * EntryEditor also registers itself to the event bus, receiving
+ * events whenever a field of the entry changes, enabling the text fields to
+ * update themselves if the change is made from somewhere else.
+ */
+public class EntryEditor extends BorderPane {
+
+<span class="nc" id="L71">    private static final Logger LOGGER = LoggerFactory.getLogger(EntryEditor.class);</span>
+
+    private final BibDatabaseContext databaseContext;
+    private final CountingUndoManager undoManager;
+    private final BasePanel panel;
+<span class="nc" id="L76">    private final List&lt;SearchQueryHighlightListener&gt; searchListeners = new ArrayList&lt;&gt;();</span>
+    private Subscription typeSubscription;
+    private final List&lt;EntryEditorTab&gt; tabs;
+    private final FileUpdateMonitor fileMonitor;
+    /**
+     * A reference to the entry this editor works on.
+     */
+    private BibEntry entry;
+    private SourceTab sourceTab;
+
+    @FXML private TabPane tabbed;
+    @FXML private Button typeChangeButton;
+    @FXML private Button fetcherButton;
+    @FXML private Label typeLabel;
+    @FXML private Button generateCiteKeyButton;
+
+    private final EntryEditorPreferences preferences;
+    private final DialogService dialogService;
+    private final NewDroppedFileHandler fileHandler;
+    private final TaskExecutor taskExecutor;
+
+<span class="nc" id="L97">    public EntryEditor(BasePanel panel, EntryEditorPreferences preferences, FileUpdateMonitor fileMonitor, DialogService dialogService, ExternalFileTypes externalFileTypes, TaskExecutor taskExecutor) {</span>
+<span class="nc" id="L98">        this.panel = panel;</span>
+<span class="nc" id="L99">        this.databaseContext = panel.getBibDatabaseContext();</span>
+<span class="nc" id="L100">        this.undoManager = panel.getUndoManager();</span>
+<span class="nc" id="L101">        this.preferences = Objects.requireNonNull(preferences);</span>
+<span class="nc" id="L102">        this.fileMonitor = fileMonitor;</span>
+<span class="nc" id="L103">        this.dialogService = dialogService;</span>
+<span class="nc" id="L104">        this.taskExecutor = taskExecutor;</span>
+
+<span class="nc" id="L106">        fileHandler = new NewDroppedFileHandler(dialogService, databaseContext, externalFileTypes,</span>
+<span class="nc" id="L107">                Globals.prefs.getFilePreferences(),</span>
+<span class="nc" id="L108">                                                Globals.prefs.getImportFormatPreferences(),</span>
+<span class="nc" id="L109">                                                Globals.prefs.getUpdateFieldPreferences(),</span>
+<span class="nc" id="L110">                Globals.getFileUpdateMonitor());</span>
+
+<span class="nc" id="L112">        ViewLoader.view(this)</span>
+<span class="nc" id="L113">                  .root(this)</span>
+<span class="nc" id="L114">                  .load();</span>
+
+<span class="nc bnc" id="L116" title="All 2 branches missed.">        if (GUIGlobals.currentFont != null) {</span>
+<span class="nc" id="L117">            setStyle(</span>
+<span class="nc" id="L118">                    &quot;text-area-background: &quot; + ColorUtil.toHex(GUIGlobals.validFieldBackgroundColor) + &quot;;&quot;</span>
+<span class="nc" id="L119">                            + &quot;text-area-foreground: &quot; + ColorUtil.toHex(GUIGlobals.editorTextColor) + &quot;;&quot;</span>
+<span class="nc" id="L120">                            + &quot;text-area-highlight: &quot; + ColorUtil.toHex(GUIGlobals.activeBackgroundColor) + &quot;;&quot;);</span>
+        }
+
+<span class="nc" id="L123">        EasyBind.subscribe(tabbed.getSelectionModel().selectedItemProperty(), tab -&gt; {</span>
+<span class="nc" id="L124">            EntryEditorTab activeTab = (EntryEditorTab) tab;</span>
+<span class="nc bnc" id="L125" title="All 2 branches missed.">            if (activeTab != null) {</span>
+<span class="nc" id="L126">                activeTab.notifyAboutFocus(entry);</span>
+            }
+<span class="nc" id="L128">        });</span>
+
+<span class="nc" id="L130">        setupKeyBindings();</span>
+
+<span class="nc" id="L132">        tabs = createTabs();</span>
+
+<span class="nc" id="L134">        this.setOnDragOver(event -&gt; {</span>
+<span class="nc bnc" id="L135" title="All 2 branches missed.">            if (event.getDragboard().hasFiles()) {</span>
+<span class="nc" id="L136">                event.acceptTransferModes(TransferMode.COPY, TransferMode.MOVE, TransferMode.LINK);</span>
+            }
+<span class="nc" id="L138">            event.consume();</span>
+<span class="nc" id="L139">        });</span>
+
+<span class="nc" id="L141">        this.setOnDragDropped(event -&gt; {</span>
+<span class="nc" id="L142">            BibEntry entry = this.getEntry();</span>
+<span class="nc" id="L143">            boolean success = false;</span>
+<span class="nc bnc" id="L144" title="All 2 branches missed.">            if (event.getDragboard().hasContent(DataFormat.FILES)) {</span>
+<span class="nc" id="L145">                List&lt;Path&gt; files = event.getDragboard().getFiles().stream().map(File::toPath).collect(Collectors.toList());</span>
+
+<span class="nc" id="L147">                FileDragDropPreferenceType dragDropPreferencesType = Globals.prefs.getEntryEditorFileLinkPreference();</span>
+
+<span class="nc bnc" id="L149" title="All 2 branches missed.">                if (dragDropPreferencesType == FileDragDropPreferenceType.MOVE)</span>
+                {
+<span class="nc bnc" id="L151" title="All 2 branches missed.">                    if (event.getTransferMode() == TransferMode.LINK) //alt on win</span>
+                    {
+<span class="nc" id="L153">                        LOGGER.debug(&quot;Mode LINK&quot;);</span>
+<span class="nc" id="L154">                        fileHandler.addToEntry(entry, files);</span>
+                    }
+<span class="nc bnc" id="L156" title="All 2 branches missed.">                    else if (event.getTransferMode() == TransferMode.COPY) //ctrl on win, no modifier on Xubuntu</span>
+                    {
+<span class="nc" id="L158">                        LOGGER.debug(&quot;Mode COPY&quot;);</span>
+<span class="nc" id="L159">                        fileHandler.copyFilesToFileDirAndAddToEntry(entry, files);</span>
+                    }
+                    else
+                    {
+<span class="nc" id="L163">                        LOGGER.debug(&quot;Mode MOVE&quot;); //shift on win or no modifier</span>
+<span class="nc" id="L164">                        fileHandler.addToEntryRenameAndMoveToFileDir(entry, files);</span>
+                    }
+                }
+
+<span class="nc bnc" id="L168" title="All 2 branches missed.">                if (dragDropPreferencesType == FileDragDropPreferenceType.COPY)</span>
+                {
+<span class="nc bnc" id="L170" title="All 2 branches missed.">                    if (event.getTransferMode() == TransferMode.COPY) //ctrl on win, no modifier on Xubuntu</span>
+                    {
+<span class="nc" id="L172">                        LOGGER.debug(&quot;Mode MOVE&quot;);</span>
+<span class="nc" id="L173">                        fileHandler.addToEntryRenameAndMoveToFileDir(entry, files);</span>
+                    }
+<span class="nc bnc" id="L175" title="All 2 branches missed.">                    else if (event.getTransferMode() == TransferMode.LINK) //alt on win</span>
+                    {
+<span class="nc" id="L177">                        LOGGER.debug(&quot;Mode LINK&quot;);</span>
+<span class="nc" id="L178">                        fileHandler.addToEntry(entry, files);</span>
+                    }
+                    else
+                    {
+<span class="nc" id="L182">                        LOGGER.debug(&quot;Mode COPY&quot;); //shift on win or no modifier</span>
+<span class="nc" id="L183">                        fileHandler.copyFilesToFileDirAndAddToEntry(entry, files);</span>
+                    }
+                }
+
+<span class="nc bnc" id="L187" title="All 2 branches missed.">                if (dragDropPreferencesType == FileDragDropPreferenceType.LINK)</span>
+                {
+<span class="nc bnc" id="L189" title="All 2 branches missed.">                    if (event.getTransferMode() == TransferMode.COPY) //ctrl on win, no modifier on Xubuntu</span>
+                    {
+<span class="nc" id="L191">                        LOGGER.debug(&quot;Mode COPY&quot;);</span>
+<span class="nc" id="L192">                        fileHandler.copyFilesToFileDirAndAddToEntry(entry, files);</span>
+                    }
+<span class="nc bnc" id="L194" title="All 2 branches missed.">                    else if (event.getTransferMode() == TransferMode.LINK) //alt on win</span>
+                    {
+<span class="nc" id="L196">                        LOGGER.debug(&quot;Mode MOVE&quot;);</span>
+<span class="nc" id="L197">                        fileHandler.addToEntryRenameAndMoveToFileDir(entry, files);</span>
+                    }
+                    else
+                    {
+<span class="nc" id="L201">                        LOGGER.debug(&quot;Mode LINK&quot;); //shift on win or no modifier</span>
+<span class="nc" id="L202">                        fileHandler.addToEntry(entry, files);</span>
+                    }
+                }
+            }
+
+<span class="nc" id="L207">            event.setDropCompleted(success);</span>
+<span class="nc" id="L208">            event.consume();</span>
+
+<span class="nc" id="L210">        });</span>
+<span class="nc" id="L211">    }</span>
+
+    /**
+     * Set-up key bindings specific for the entry editor.
+     */
+    private void setupKeyBindings() {
+<span class="nc" id="L217">        this.addEventHandler(KeyEvent.KEY_PRESSED, event -&gt; {</span>
+<span class="nc" id="L218">            Optional&lt;KeyBinding&gt; keyBinding = preferences.getKeyBindings().mapToKeyBinding(event);</span>
+<span class="nc bnc" id="L219" title="All 2 branches missed.">            if (keyBinding.isPresent()) {</span>
+<span class="nc bnc" id="L220" title="All 8 branches missed.">                switch (keyBinding.get()) {</span>
+                    case ENTRY_EDITOR_NEXT_PANEL:
+                    case ENTRY_EDITOR_NEXT_PANEL_2:
+<span class="nc" id="L223">                        tabbed.getSelectionModel().selectNext();</span>
+<span class="nc" id="L224">                        event.consume();</span>
+<span class="nc" id="L225">                        break;</span>
+                    case ENTRY_EDITOR_PREVIOUS_PANEL:
+                    case ENTRY_EDITOR_PREVIOUS_PANEL_2:
+<span class="nc" id="L228">                        tabbed.getSelectionModel().selectPrevious();</span>
+<span class="nc" id="L229">                        event.consume();</span>
+<span class="nc" id="L230">                        break;</span>
+                    case ENTRY_EDITOR_NEXT_ENTRY:
+<span class="nc" id="L232">                        panel.selectNextEntry();</span>
+<span class="nc" id="L233">                        event.consume();</span>
+<span class="nc" id="L234">                        break;</span>
+                    case ENTRY_EDITOR_PREVIOUS_ENTRY:
+<span class="nc" id="L236">                        panel.selectPreviousEntry();</span>
+<span class="nc" id="L237">                        event.consume();</span>
+<span class="nc" id="L238">                        break;</span>
+                    case HELP:
+<span class="nc" id="L240">                        HelpAction.openHelpPage(HelpFile.ENTRY_EDITOR);</span>
+<span class="nc" id="L241">                        event.consume();</span>
+<span class="nc" id="L242">                        break;</span>
+                    case CLOSE:
+<span class="nc" id="L244">                        close();</span>
+<span class="nc" id="L245">                        event.consume();</span>
+<span class="nc" id="L246">                        break;</span>
+                    case CLOSE_ENTRY:
+<span class="nc" id="L248">                        close();</span>
+<span class="nc" id="L249">                        event.consume();</span>
+<span class="nc" id="L250">                        break;</span>
+                    default:
+                        // Pass other keys to parent
+                }
+            }
+<span class="nc" id="L255">        });</span>
+<span class="nc" id="L256">    }</span>
+
+    @FXML
+    public void close() {
+<span class="nc" id="L260">        panel.entryEditorClosing(EntryEditor.this);</span>
+<span class="nc" id="L261">    }</span>
+
+    @FXML
+    private void deleteEntry() {
+<span class="nc" id="L265">        panel.delete(entry);</span>
+<span class="nc" id="L266">    }</span>
+
+    @FXML
+    private void navigateToPreviousEntry() {
+<span class="nc" id="L270">        panel.selectPreviousEntry();</span>
+<span class="nc" id="L271">    }</span>
+
+    @FXML
+    private void navigateToNextEntry() {
+<span class="nc" id="L275">        panel.selectNextEntry();</span>
+<span class="nc" id="L276">    }</span>
+
+    private List&lt;EntryEditorTab&gt; createTabs() {
+<span class="nc" id="L279">        List&lt;EntryEditorTab&gt; tabs = new LinkedList&lt;&gt;();</span>
+
+        // Required fields
+<span class="nc" id="L282">        tabs.add(new RequiredFieldsTab(panel.getBibDatabaseContext(), panel.getSuggestionProviders(), undoManager, dialogService));</span>
+
+        // Optional fields
+<span class="nc" id="L285">        tabs.add(new OptionalFieldsTab(panel.getBibDatabaseContext(), panel.getSuggestionProviders(), undoManager, dialogService));</span>
+<span class="nc" id="L286">        tabs.add(new OptionalFields2Tab(panel.getBibDatabaseContext(), panel.getSuggestionProviders(), undoManager, dialogService));</span>
+<span class="nc" id="L287">        tabs.add(new DeprecatedFieldsTab(panel.getBibDatabaseContext(), panel.getSuggestionProviders(), undoManager, dialogService));</span>
+
+        // Other fields
+<span class="nc" id="L290">        tabs.add(new OtherFieldsTab(panel.getBibDatabaseContext(), panel.getSuggestionProviders(), undoManager, preferences.getCustomTabFieldNames(), dialogService));</span>
+
+        // General fields from preferences
+<span class="nc bnc" id="L293" title="All 2 branches missed.">        for (Map.Entry&lt;String, List&lt;String&gt;&gt; tab : preferences.getEntryEditorTabList().entrySet()) {</span>
+<span class="nc" id="L294">            tabs.add(new UserDefinedFieldsTab(tab.getKey(), tab.getValue(), panel.getBibDatabaseContext(), panel.getSuggestionProviders(), undoManager, dialogService));</span>
+<span class="nc" id="L295">        }</span>
+
+        // Special tabs
+<span class="nc" id="L298">        tabs.add(new MathSciNetTab());</span>
+<span class="nc" id="L299">        tabs.add(new FileAnnotationTab(panel.getAnnotationCache()));</span>
+<span class="nc" id="L300">        tabs.add(new RelatedArticlesTab(preferences, dialogService));</span>
+
+        // Source tab
+<span class="nc" id="L303">        sourceTab = new SourceTab(databaseContext, undoManager, preferences.getLatexFieldFormatterPreferences(), preferences.getImportFormatPreferences(), fileMonitor);</span>
+<span class="nc" id="L304">        tabs.add(sourceTab);</span>
+<span class="nc" id="L305">        return tabs;</span>
+    }
+
+    private void recalculateVisibleTabs() {
+<span class="nc" id="L309">        List&lt;Tab&gt; visibleTabs = tabs.stream().filter(tab -&gt; tab.shouldShow(entry)).collect(Collectors.toList());</span>
+
+        // Start of ugly hack:
+        // We need to find out, which tabs will be shown and which not and remove and re-add the appropriate tabs
+        // to the editor. We don't want to simply remove all and re-add the complete list of visible tabs, because
+        // the tabs give an ugly animation the looks like all tabs are shifting in from the right.
+        // This hack is required since tabbed.getTabs().setAll(visibleTabs) changes the order of the tabs in the editor
+
+        // First, remove tabs that we do not want to show
+<span class="nc bnc" id="L318" title="All 2 branches missed.">        List&lt;EntryEditorTab&gt; toBeRemoved = tabs.stream().filter(tab -&gt; !tab.shouldShow(entry)).collect(Collectors.toList());</span>
+<span class="nc" id="L319">        tabbed.getTabs().removeAll(toBeRemoved);</span>
+
+        // Next add all the visible tabs (if not already present) at the right position
+<span class="nc bnc" id="L322" title="All 2 branches missed.">        for (int i = 0; i &lt; visibleTabs.size(); i++) {</span>
+<span class="nc" id="L323">            Tab toBeAdded = visibleTabs.get(i);</span>
+<span class="nc" id="L324">            Tab shown = null;</span>
+<span class="nc bnc" id="L325" title="All 2 branches missed.">            if (i &lt; tabbed.getTabs().size()) {</span>
+<span class="nc" id="L326">                shown = tabbed.getTabs().get(i);</span>
+            }
+
+<span class="nc bnc" id="L329" title="All 2 branches missed.">            if (!toBeAdded.equals(shown)) {</span>
+<span class="nc" id="L330">                tabbed.getTabs().add(i, toBeAdded);</span>
+            }
+        }
+<span class="nc" id="L333">    }</span>
+
+    /**
+     * @return the currently edited entry
+     */
+    public BibEntry getEntry() {
+<span class="nc" id="L339">        return entry;</span>
+    }
+
+    /**
+     * Sets the entry to edit.
+     */
+    public void setEntry(BibEntry entry) {
+<span class="nc" id="L346">        Objects.requireNonNull(entry);</span>
+
+        // Remove subscription for old entry if existing
+<span class="nc bnc" id="L349" title="All 2 branches missed.">        if (typeSubscription != null) {</span>
+<span class="nc" id="L350">            typeSubscription.unsubscribe();</span>
+        }
+
+<span class="nc" id="L353">        this.entry = entry;</span>
+
+<span class="nc" id="L355">        recalculateVisibleTabs();</span>
+<span class="nc bnc" id="L356" title="All 2 branches missed.">        if (preferences.showSourceTabByDefault()) {</span>
+<span class="nc" id="L357">            tabbed.getSelectionModel().select(sourceTab);</span>
+        }
+
+        // Notify current tab about new entry
+<span class="nc" id="L361">        getSelectedTab().notifyAboutFocus(entry);</span>
+
+<span class="nc" id="L363">        setupToolBar();</span>
+
+        // Subscribe to type changes for rebuilding the currently visible tab
+<span class="nc" id="L366">        typeSubscription = EasyBind.subscribe(this.entry.typeProperty(), type -&gt; {</span>
+<span class="nc" id="L367">            typeLabel.setText(new TypedBibEntry(entry, databaseContext.getMode()).getTypeForDisplay());</span>
+<span class="nc" id="L368">            recalculateVisibleTabs();</span>
+<span class="nc" id="L369">            getSelectedTab().notifyAboutFocus(entry);</span>
+<span class="nc" id="L370">        });</span>
+<span class="nc" id="L371">    }</span>
+
+    private EntryEditorTab getSelectedTab() {
+<span class="nc" id="L374">        return (EntryEditorTab) tabbed.getSelectionModel().getSelectedItem();</span>
+    }
+
+    private void setupToolBar() {
+        // Update type label
+<span class="nc" id="L379">        TypedBibEntry typedEntry = new TypedBibEntry(entry, databaseContext.getMode());</span>
+<span class="nc" id="L380">        typeLabel.setText(typedEntry.getTypeForDisplay());</span>
+
+        // Add type change menu
+<span class="nc" id="L383">        ContextMenu typeMenu = new ChangeEntryTypeMenu(preferences.getKeyBindings()).getChangeEntryTypePopupMenu(entry, databaseContext, undoManager);</span>
+<span class="nc" id="L384">        typeLabel.setOnMouseClicked(event -&gt; typeMenu.show(typeLabel, Side.RIGHT, 0, 0));</span>
+<span class="nc" id="L385">        typeChangeButton.setOnMouseClicked(event -&gt; typeMenu.show(typeChangeButton, Side.RIGHT, 0, 0));</span>
+        // Add menu for fetching bibliographic information
+<span class="nc" id="L387">        ContextMenu fetcherMenu = new ContextMenu();</span>
+<span class="nc bnc" id="L388" title="All 2 branches missed.">        for (EntryBasedFetcher fetcher : WebFetchers.getEntryBasedFetchers(preferences.getImportFormatPreferences())) {</span>
+<span class="nc" id="L389">            MenuItem fetcherMenuItem = new MenuItem(fetcher.getName());</span>
+<span class="nc" id="L390">            fetcherMenuItem.setOnAction(event -&gt; fetchAndMerge(fetcher));</span>
+<span class="nc" id="L391">            fetcherMenu.getItems().add(fetcherMenuItem);</span>
+<span class="nc" id="L392">        }</span>
+<span class="nc" id="L393">        fetcherButton.setOnMouseClicked(event -&gt; fetcherMenu.show(fetcherButton, Side.RIGHT, 0, 0));</span>
+
+        // Configure cite key button
+<span class="nc" id="L396">        new ActionFactory(preferences.getKeyBindings())</span>
+<span class="nc" id="L397">                .configureIconButton(</span>
+                        StandardActions.GENERATE_CITE_KEY,
+<span class="nc" id="L399">                        new GenerateBibtexKeySingleAction(getEntry(), databaseContext, dialogService, preferences, undoManager),</span>
+                        generateCiteKeyButton);
+<span class="nc" id="L401">    }</span>
+
+    private void fetchAndMerge(EntryBasedFetcher fetcher) {
+<span class="nc" id="L404">        new FetchAndMergeEntry(panel, taskExecutor).fetchAndMerge(entry, fetcher);</span>
+<span class="nc" id="L405">    }</span>
+
+    void addSearchListener(SearchQueryHighlightListener listener) {
+        // TODO: Highlight search text in entry editors
+<span class="nc" id="L409">        searchListeners.add(listener);</span>
+<span class="nc" id="L410">        panel.frame().getGlobalSearchBar().getSearchQueryHighlightObservable().addSearchListener(listener);</span>
+<span class="nc" id="L411">    }</span>
+
+    public void setFocusToField(String fieldName) {
+<span class="nc" id="L414">        DefaultTaskExecutor.runInJavaFXThread(() -&gt; {</span>
+<span class="nc bnc" id="L415" title="All 2 branches missed.">            for (Tab tab : tabbed.getTabs()) {</span>
+<span class="nc bnc" id="L416" title="All 4 branches missed.">                if ((tab instanceof FieldsEditorTab) &amp;&amp; ((FieldsEditorTab) tab).getShownFields().contains(fieldName)) {</span>
+<span class="nc" id="L417">                    FieldsEditorTab fieldsEditorTab = (FieldsEditorTab) tab;</span>
+<span class="nc" id="L418">                    tabbed.getSelectionModel().select(tab);</span>
+<span class="nc" id="L419">                    fieldsEditorTab.requestFocus(fieldName);</span>
+                }
+<span class="nc" id="L421">            }</span>
+<span class="nc" id="L422">        });</span>
+<span class="nc" id="L423">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.1.201803210924</span></div></body></html>

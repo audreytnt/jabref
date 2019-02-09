@@ -1,0 +1,151 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DuplicateResolverDialog.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JabRef</a> &gt; <a href="index.source.html" class="el_package">org.jabref.gui</a> &gt; <span class="el_source">DuplicateResolverDialog.java</span></div><h1>DuplicateResolverDialog.java</h1><pre class="source lang-java linenums">package org.jabref.gui;
+
+import java.awt.BorderLayout;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
+
+import javax.swing.Box;
+import javax.swing.JButton;
+import javax.swing.JPanel;
+
+import javafx.scene.Scene;
+
+import org.jabref.gui.customjfx.CustomJFXPanel;
+import org.jabref.gui.help.HelpAction;
+import org.jabref.gui.importer.ImportInspectionDialog;
+import org.jabref.gui.mergeentries.MergeEntries;
+import org.jabref.gui.util.WindowLocation;
+import org.jabref.logic.help.HelpFile;
+import org.jabref.logic.l10n.Localization;
+import org.jabref.model.entry.BibEntry;
+import org.jabref.preferences.JabRefPreferences;
+
+public class DuplicateResolverDialog extends JabRefDialog {
+
+<span class="nc" id="L25">    public enum DuplicateResolverType {</span>
+<span class="nc" id="L26">        DUPLICATE_SEARCH,</span>
+<span class="nc" id="L27">        IMPORT_CHECK,</span>
+<span class="nc" id="L28">        INSPECTION,</span>
+<span class="nc" id="L29">        DUPLICATE_SEARCH_WITH_EXACT</span>
+    }
+
+<span class="nc" id="L32">    public enum DuplicateResolverResult {</span>
+<span class="nc" id="L33">        NOT_CHOSEN,</span>
+<span class="nc" id="L34">        KEEP_BOTH,</span>
+<span class="nc" id="L35">        KEEP_LEFT,</span>
+<span class="nc" id="L36">        KEEP_RIGHT,</span>
+<span class="nc" id="L37">        AUTOREMOVE_EXACT,</span>
+<span class="nc" id="L38">        KEEP_MERGE,</span>
+<span class="nc" id="L39">        BREAK</span>
+    }
+
+<span class="nc" id="L42">    JButton helpButton = new HelpAction(Localization.lang(&quot;Help&quot;), HelpFile.FIND_DUPLICATES).getHelpButton();</span>
+<span class="nc" id="L43">    private final JButton cancel = new JButton(Localization.lang(&quot;Cancel&quot;));</span>
+<span class="nc" id="L44">    private final JButton merge = new JButton(Localization.lang(&quot;Keep merged entry only&quot;));</span>
+    private final JabRefFrame frame;
+<span class="nc" id="L46">    private final JPanel options = new JPanel();</span>
+<span class="nc" id="L47">    private DuplicateResolverResult status = DuplicateResolverResult.NOT_CHOSEN;</span>
+    private MergeEntries me;
+
+    public DuplicateResolverDialog(JabRefFrame frame, BibEntry one, BibEntry two, DuplicateResolverType type) {
+<span class="nc" id="L51">        super(Localization.lang(&quot;Possible duplicate entries&quot;), true, DuplicateResolverDialog.class);</span>
+<span class="nc" id="L52">        this.frame = frame;</span>
+<span class="nc" id="L53">        init(one, two, type);</span>
+<span class="nc" id="L54">    }</span>
+
+    public DuplicateResolverDialog(ImportInspectionDialog dialog, BibEntry one, BibEntry two,
+            DuplicateResolverType type) {
+<span class="nc" id="L58">        super(dialog, Localization.lang(&quot;Possible duplicate entries&quot;), true, DuplicateResolverDialog.class);</span>
+<span class="nc" id="L59">        this.frame = dialog.getFrame();</span>
+<span class="nc" id="L60">        init(one, two, type);</span>
+<span class="nc" id="L61">    }</span>
+
+    private void init(BibEntry one, BibEntry two, DuplicateResolverType type) {
+        JButton both;
+        JButton second;
+        JButton first;
+<span class="nc" id="L67">        JButton removeExact = null;</span>
+<span class="nc bnc" id="L68" title="All 4 branches missed.">        switch (type) {</span>
+        case DUPLICATE_SEARCH:
+<span class="nc" id="L70">            first = new JButton(Localization.lang(&quot;Keep left&quot;));</span>
+<span class="nc" id="L71">            second = new JButton(Localization.lang(&quot;Keep right&quot;));</span>
+<span class="nc" id="L72">            both = new JButton(Localization.lang(&quot;Keep both&quot;));</span>
+<span class="nc" id="L73">            me = new MergeEntries(one, two, frame.getCurrentBasePanel().getBibDatabaseContext().getMode());</span>
+<span class="nc" id="L74">            break;</span>
+        case INSPECTION:
+<span class="nc" id="L76">            first = new JButton(Localization.lang(&quot;Remove old entry&quot;));</span>
+<span class="nc" id="L77">            second = new JButton(Localization.lang(&quot;Remove entry from import&quot;));</span>
+<span class="nc" id="L78">            both = new JButton(Localization.lang(&quot;Keep both&quot;));</span>
+<span class="nc" id="L79">            me = new MergeEntries(one, two, Localization.lang(&quot;Old entry&quot;),</span>
+<span class="nc" id="L80">                    Localization.lang(&quot;From import&quot;), frame.getCurrentBasePanel().getBibDatabaseContext().getMode());</span>
+<span class="nc" id="L81">            break;</span>
+        case DUPLICATE_SEARCH_WITH_EXACT:
+<span class="nc" id="L83">            first = new JButton(Localization.lang(&quot;Keep left&quot;));</span>
+<span class="nc" id="L84">            second = new JButton(Localization.lang(&quot;Keep right&quot;));</span>
+<span class="nc" id="L85">            both = new JButton(Localization.lang(&quot;Keep both&quot;));</span>
+<span class="nc" id="L86">            removeExact = new JButton(Localization.lang(&quot;Automatically remove exact duplicates&quot;));</span>
+<span class="nc" id="L87">            me = new MergeEntries(one, two, frame.getCurrentBasePanel().getBibDatabaseContext().getMode());</span>
+<span class="nc" id="L88">            break;</span>
+        default:
+<span class="nc" id="L90">            first = new JButton(Localization.lang(&quot;Import and remove old entry&quot;));</span>
+<span class="nc" id="L91">            second = new JButton(Localization.lang(&quot;Do not import entry&quot;));</span>
+<span class="nc" id="L92">            both = new JButton(Localization.lang(&quot;Import and keep old entry&quot;));</span>
+<span class="nc" id="L93">            me = new MergeEntries(one, two, Localization.lang(&quot;Old entry&quot;),</span>
+<span class="nc" id="L94">                    Localization.lang(&quot;From import&quot;), frame.getCurrentBasePanel().getBibDatabaseContext().getMode());</span>
+            break;
+        }
+
+<span class="nc bnc" id="L98" title="All 2 branches missed.">        if (removeExact != null) {</span>
+<span class="nc" id="L99">            options.add(removeExact);</span>
+        }
+<span class="nc" id="L101">        options.add(first);</span>
+<span class="nc" id="L102">        options.add(second);</span>
+<span class="nc" id="L103">        options.add(both);</span>
+<span class="nc" id="L104">        options.add(merge);</span>
+<span class="nc" id="L105">        options.add(Box.createHorizontalStrut(5));</span>
+<span class="nc" id="L106">        options.add(cancel);</span>
+<span class="nc" id="L107">        options.add(helpButton);</span>
+
+<span class="nc" id="L109">        first.addActionListener(e -&gt; buttonPressed(DuplicateResolverResult.KEEP_LEFT));</span>
+<span class="nc" id="L110">        second.addActionListener(e -&gt; buttonPressed(DuplicateResolverResult.KEEP_RIGHT));</span>
+<span class="nc" id="L111">        both.addActionListener(e -&gt; buttonPressed(DuplicateResolverResult.KEEP_BOTH));</span>
+<span class="nc" id="L112">        merge.addActionListener(e -&gt; buttonPressed(DuplicateResolverResult.KEEP_MERGE));</span>
+<span class="nc bnc" id="L113" title="All 2 branches missed.">        if (removeExact != null) {</span>
+<span class="nc" id="L114">            removeExact.addActionListener(e -&gt; buttonPressed(DuplicateResolverResult.AUTOREMOVE_EXACT));</span>
+        }
+
+<span class="nc" id="L117">        cancel.addActionListener(e -&gt; buttonPressed(DuplicateResolverResult.BREAK));</span>
+<span class="nc" id="L118">        addWindowListener(new WindowAdapter() {</span>
+            @Override
+            public void windowClosing(WindowEvent e) {
+<span class="nc" id="L121">                buttonPressed(DuplicateResolverResult.BREAK);</span>
+<span class="nc" id="L122">            }</span>
+        });
+
+<span class="nc" id="L125">        getContentPane().add(CustomJFXPanel.wrap(new Scene(me)));</span>
+<span class="nc" id="L126">        getContentPane().add(options, BorderLayout.SOUTH);</span>
+<span class="nc" id="L127">        pack();</span>
+
+<span class="nc" id="L129">        WindowLocation pw = new WindowLocation(this, JabRefPreferences.DUPLICATES_POS_X,</span>
+                JabRefPreferences.DUPLICATES_POS_Y, JabRefPreferences.DUPLICATES_SIZE_X,
+                JabRefPreferences.DUPLICATES_SIZE_Y);
+<span class="nc" id="L132">        pw.displayWindowAtStoredLocation();</span>
+
+<span class="nc" id="L134">        both.requestFocus();</span>
+<span class="nc" id="L135">    }</span>
+
+    private void buttonPressed(DuplicateResolverResult result) {
+<span class="nc" id="L138">        status = result;</span>
+<span class="nc" id="L139">        dispose();</span>
+<span class="nc" id="L140">    }</span>
+
+    public DuplicateResolverResult getSelected() {
+<span class="nc" id="L143">        return status;</span>
+    }
+
+    public BibEntry getMergedEntry() {
+<span class="nc" id="L147">        return me.getMergeEntry();</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.1.201803210924</span></div></body></html>

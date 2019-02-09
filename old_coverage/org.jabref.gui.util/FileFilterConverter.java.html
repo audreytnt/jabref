@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FileFilterConverter.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JabRef</a> &gt; <a href="index.source.html" class="el_package">org.jabref.gui.util</a> &gt; <span class="el_source">FileFilterConverter.java</span></div><h1>FileFilterConverter.java</h1><pre class="source lang-java linenums">package org.jabref.gui.util;
+
+import java.util.Collection;
+import java.util.List;
+import java.util.Optional;
+import java.util.SortedSet;
+import java.util.stream.Collectors;
+
+import javafx.stage.FileChooser;
+
+import org.jabref.logic.exporter.Exporter;
+import org.jabref.logic.importer.Importer;
+import org.jabref.logic.l10n.Localization;
+import org.jabref.logic.util.FileType;
+
+public class FileFilterConverter {
+
+<span class="fc" id="L18">    public static FileChooser.ExtensionFilter ANY_FILE = new FileChooser.ExtensionFilter(Localization.lang(&quot;Any file&quot;), &quot;*.*&quot;);</span>
+
+    private FileFilterConverter() {
+    }
+
+    static FileChooser.ExtensionFilter toExtensionFilter(FileType fileType) {
+<span class="fc" id="L24">        String description = Localization.lang(&quot;%0 file&quot;, fileType.toString());</span>
+<span class="fc" id="L25">        return new FileChooser.ExtensionFilter(description, fileType.getExtensionsWithDot());</span>
+    }
+
+    static FileChooser.ExtensionFilter toExtensionFilter(String description, FileType fileType) {
+<span class="nc" id="L29">        return new FileChooser.ExtensionFilter(description, fileType.getExtensionsWithDot());</span>
+    }
+
+    public static Optional&lt;Importer&gt; getImporter(FileChooser.ExtensionFilter extensionFilter, Collection&lt;Importer&gt; importers) {
+<span class="nc" id="L33">        return importers.stream().filter(importer -&gt; importer.getName().equals(extensionFilter.getDescription())).findFirst();</span>
+    }
+
+    public static Optional&lt;Exporter&gt; getExporter(FileChooser.ExtensionFilter extensionFilter, Collection&lt;Exporter&gt; exporters) {
+<span class="nc" id="L37">        return exporters.stream().filter(exporter -&gt; exporter.getName().equals(extensionFilter.getDescription())).findFirst();</span>
+    }
+
+    public static FileChooser.ExtensionFilter forAllImporters(SortedSet&lt;Importer&gt; importers) {
+<span class="nc" id="L41">        List&lt;FileType&gt; fileTypes = importers.stream().map(Importer::getFileType).collect(Collectors.toList());</span>
+<span class="nc" id="L42">        List&lt;String&gt; flatExtensions = fileTypes.stream()</span>
+<span class="nc" id="L43">                                               .flatMap(type -&gt; type.getExtensionsWithDot().stream())</span>
+<span class="nc" id="L44">                                               .collect(Collectors.toList());</span>
+
+<span class="nc" id="L46">        return new FileChooser.ExtensionFilter(Localization.lang(&quot;Available import formats&quot;), flatExtensions);</span>
+    }
+
+    public static List&lt;FileChooser.ExtensionFilter&gt; importerToExtensionFilter(Collection&lt;Importer&gt; importers) {
+<span class="nc" id="L50">        return importers.stream()</span>
+<span class="nc" id="L51">                        .map(importer -&gt; toExtensionFilter(importer.getName(), importer.getFileType()))</span>
+<span class="nc" id="L52">                        .collect(Collectors.toList());</span>
+    }
+
+    public static List&lt;FileChooser.ExtensionFilter&gt; exporterToExtensionFilter(Collection&lt;Exporter&gt; exporters) {
+<span class="nc" id="L56">        return exporters.stream()</span>
+<span class="nc" id="L57">                        .map(exporter -&gt; toExtensionFilter(exporter.getName(), exporter.getFileType()))</span>
+<span class="nc" id="L58">                        .collect(Collectors.toList());</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.1.201803210924</span></div></body></html>
