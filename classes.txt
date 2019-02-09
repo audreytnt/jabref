@@ -68,8 +68,6 @@ org.jabref.logic.importer.fetcher.ACS
 org.jabref.logic.importer.fetcher.ArXiv
 org.jabref.logic.importer.fetcher.CiteSeer
 org.jabref.logic.importer.fetcher.CrossRef
-org.jabref.model.database.BibDatabase
-org.jabref.model.entry.BibEntry
 org.jabref.model.entry.BibtexString
 org.jabref.model.entry.Date
 org.jabref.model.entry.KeywordList
